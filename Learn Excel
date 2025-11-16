@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Excel Formula Helper — Demo App</title>
+<style>
+  :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  body{margin:0;background:#f6f8fb;color:#111}
+  header{background:#1f6feb;color:white;padding:18px 20px}
+  h1{margin:0;font-size:20px}
+  .wrap{display:flex;gap:18px;padding:18px;max-width:1100px;margin:18px auto}
+  .left{width:340px;background:white;border-radius:8px;padding:12px;box-shadow:0 6px 18px rgba(18,36,63,.08)}
+  .right{flex:1;background:white;border-radius:8px;padding:18px;box-shadow:0 6px 18px rgba(18,36,63,.06)}
+  input[type="search"], input[type="text"], textarea, select{width:100%;padding:8px;border-radius:6px;border:1px solid #d6dce9}
+  .list{margin-top:12px;max-height:540px;overflow:auto;}
+  .formula-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:8px;border:1px solid transparent}
+  .formula-item:hover{background:#f1f5ff}
+  .formula-item.active{background:#e8f0ff;border-color:#cfe0ff}
+  .meta{font-size:13px;color:#444;margin-top:6px}
+  pre{background:#0b122a;color:#e8f1ff;padding:12px;border-radius:6px;overflow:auto}
+  .row{display:flex;gap:12px;align-items:center}
+  button{padding:8px 12px;border-radius:6px;border:0;background:#1f6feb;color:white;cursor:pointer}
+  .muted{color:#666;font-size:13px}
+  .example{background:#fafbff;border:1px solid #eef2ff;padding:12px;border-radius:6px;margin-top:12px}
+  .explain{margin-top:12px;padding:10px;background:#fff9e6;border-radius:6px;border:1px solid #fff0c2}
+  label{font-weight:600;font-size:13px;display:block;margin-bottom:6px}
+  .table-input{width:100%;min-height:90px}
+  .small{font-size:13px;color:#333}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .footer{padding:12px;color:#4b5563;font-size:13px}
+  .copy{background:#0ea5a4}
+  .code-line{background:#eef3ff;padding:8px;border-radius:6px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Excel Formula Helper — Demo app</h1>
+  <div style="font-size:13px;opacity:.9">Interactive explanations & simulators for common Excel formulas</div>
+</header>
+
+<div class="wrap">
+  <aside class="left">
+    <label for="search">Search formulas</label>
+    <input id="search" type="search" placeholder="e.g. VLOOKUP, SUM, IF..." />
+    <div style="margin-top:10px" class="row">
+      <div style="flex:1">
+        <select id="category">
+          <option value="all">All categories</option>
+          <option value="math">Math & Stats</option>
+          <option value="logic">Logical</option>
+          <option value="lookup">Lookup & Reference</option>
+          <option value="text">Text</option>
+        </select>
+      </div>
+      <div>
+        <button id="reset">Reset</button>
+      </div>
+    </div>
+
+    <div class="list" id="list"></div>
+  </aside>
+
+  <main class="right">
+    <div id="detail">
+      <h2 id="title">Select a formula</h2>
+      <div id="syn" class="meta"></div>
+
+      <div id="description" style="margin-top:12px;color:#222"></div>
+
+      <div id="example" class="example" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Example</strong> <span class="muted" id="ex-desc"></span></div>
+          <div><button id="copyFormula" class="copy">Copy Excel formula</button></div>
+        </div>
+        <pre id="ex-formula" class="code-line" style="margin-top:8px"></pre>
+        <div id="ex-result" style="margin-top:8px" class="small"></div>
+      </div>
+
+      <div id="sim" style="margin-top:14px;display:none">
+        <label>Interactive inputs (enter comma-separated values for arrays or table rows). Example for a table: <span class="muted">A1,B1;A2,B2;A3,B3</span></label>
+        <textarea id="inputs" class="table-input" placeholder="Enter values here"></textarea>
+        <div style="margin-top:8px" class="row">
+          <div style="flex:1"><input id="cellRef" type="text" placeholder="Optional: a single cell value (e.g. 42)"></div>
+          <div><button id="run">Run</button></div>
+        </div>
+        <div id="sim-result" class="explain" style="display:none"></div>
+      </div>
+
+      <div id="how" style="margin-top:14px;display:none">
+        <strong>Step-by-step explanation</strong>
+        <div id="steps" style="margin-top:8px"></div>
+      </div>
+
+      <div style="margin-top:18px" id="notes" class="muted"></div>
+    </div>
+  </main>
+</div>
+
+<div class="footer" style="max-width:1100px;margin:8px auto">
+  Built as a demo. Want more formulas, CSV import, or a prettier UI? Tell me which ones and I’ll add them.
+</div>
+
+<script>
+/* Data: list of formulas. Add more formulas here to extend the app. Each entry includes:
+   - id
+   - name
+   - category
+   - syntax (display)
+   - short explanation
+   - example: { formulaText, inputs (for simulator), exDesc }
+   - simulate: a JS function(inputs, cellRef) that returns { result, steps }
+*/
+const formulas = [
+  {
+    id:'sum',
+    name:'SUM',
+    category:'math',
+    syntax:'SUM(number1, [number2], ...)',
+    description:'Adds all the numbers in the argument list or range.',
+    example:{
+      formulaText:'=SUM(10, 20, 5)',
+      exDesc:'Adds the three numbers to return 35',
+      inputs:'10,20,5'
+    },
+    simulate: (inputs, cellRef) => {
+      const nums = inputs.flat();
+      const res = nums.reduce((a,b)=>a+Number(b||0),0);
+      const steps = [
+        `Numbers: ${nums.join(', ')}`,
+        `Sum = ${res}`
+      ];
+      return { result: res, steps };
+    }
+  },
+
+  {
+    id:'average',
+    name:'AVERAGE',
+    category:'math',
+    syntax:'AVERAGE(number1, [number2], ...)',
+    description:'Returns the arithmetic mean of the arguments.',
+    example:{
+      formulaText:'=AVERAGE(10,20,30)',
+      exDesc:'Returns (10+20+30)/3 = 20',
+      inputs:'10,20,30'
+    },
+    simulate: (inputs) => {
+      const nums = inputs.flat();
+      const sum = nums.reduce((a,b)=>a+Number(b||0),0);
+      const res = nums.length ? (sum/nums.length) : 0;
+      const steps = [
+        `Numbers: ${nums.join(', ')}`,
+        `Sum = ${sum}`,
+        `Count = ${nums.length}`,
+        `Average = ${res}`
+      ];
+      return { result: res, steps };
+    }
+  },
+
+  {
+    id:'if',
+    name:'IF',
+    category:'logic',
+    syntax:'IF(condition, value_if_true, value_if_false)',
+    description:'Evaluates a condition and returns one value if TRUE and another if FALSE.',
+    example:{
+      formulaText:'=IF(A1>10, "High", "Low")',
+      exDesc:'If A1 is greater than 10 returns "High" else "Low"',
+      inputs:'' // we'll use the cellRef field for condition demos
+    },
+    simulate: (inputs, cellRef) => {
+      // expects cellRef to contain e.g. "15" and a simple condition will be used for demo
+      const val = Number(cellRef);
+      const condition = val > 10;
+      const result = condition ? "High" : "Low";
+      const steps = [
+        `Cell value = ${val}`,
+        `Condition "cell > 10" is ${condition}`,
+        `Result = ${result}`
+      ];
+      return { result, steps };
+    }
+  },
+
+  {
+    id:'countif',
+    name:'COUNTIF',
+    category:'math',
+    syntax:'COUNTIF(range, criteria)',
+    description:'Counts the number of cells within a range that meet the given criteria.',
+    example:{
+      formulaText:'=COUNTIF(A1:A6,">=10")',
+      exDesc:'Counts how many cells are >= 10',
+      inputs:'5,12,7,10,22,9' // simple one-dimensional range
+    },
+    simulate: (inputs, cellRef) => {
+      // cellRef will be criteria (like ">=10" or "10")
+      const arr = inputs.flat().map(x=>Number(x));
+      const crit = cellRef ? cellRef.trim() : ">=10";
+      let count=0, steps=[];
+      const parsed = (() => {
+        const m = crit.match(/^([<>]=?|=)?\s*(.+)$/);
+        if(!m) return {op:'=', val:Number(crit)};
+        return {op: m[1] || '=', val: Number(m[2])};
+      })();
+      arr.forEach(x=>{
+        let ok=false;
+        const v = x;
+        const t = parsed;
+        if(t.op==='>' ) ok = v>t.val;
+        if(t.op==='<') ok = v<t.val;
+        if(t.op==='>=') ok = v>=t.val;
+        if(t.op==='<=') ok = v<=t.val;
+        if(t.op==='=') ok = v===t.val;
+        if(ok) count++;
+      });
+      steps.push(`Range values: ${arr.join(', ')}`);
+      steps.push(`Criteria: ${crit}`);
+      steps.push(`Count matching = ${count}`);
+      return { result: count, steps };
+    }
+  },
+
+  {
+    id:'sumif',
+    name:'SUMIF',
+    category:'math',
+    syntax:'SUMIF(range, criteria, [sum_range])',
+    description:'Sums the values in a range that meet specified criteria (optionally sum other aligned range).',
+    example:{
+      formulaText:'=SUMIF(A1:A5, "Apple", B1:B5)',
+      exDesc:'Sum values in B where corresponding A is "Apple"',
+      inputs:'Apple,Orange,Apple;10,5,7' // two arrays: first is criteria column then sum column
+    },
+    simulate: (inputs, cellRef) => {
+      // inputs may be two semicolon-separated lists joined by newline; we'll parse smartly
+      let ranges = inputs;
+      if(inputs.length===0 || (inputs.length===1 && inputs[0].length && typeof inputs[0][0]==='string' && inputs[0][0].includes(';'))) {
+        // not needed; general case below
+      }
+      // Expect arrays: first arr is criteriaCol, second arr is sumCol
+      const first = inputs[0] || [];
+      const second = inputs[1] || [];
+      const crit = cellRef ? cellRef : first[0] || "";
+      // If user supplied a single list of values and criteria is a string in cellRef, we'll sum where equals cellRef
+      let sum=0; const steps=[];
+      for(let i=0;i<Math.max(first.length, second.length); i++){
+        const a = first[i];
+        const b = Number(second[i]||0);
+        if(String(a)===String(crit)) { sum += b; steps.push(`Match at row ${i+1}: ${b}`); }
+      }
+      steps.unshift(`Criteria: ${crit}`);
+      steps.unshift(`Criteria column: ${first.join(', ')}`);
+      steps.push(`Total sum = ${sum}`);
+      return { result: sum, steps };
+    }
+  },
+
+  {
+    id:'vlookup',
+    name:'VLOOKUP (basic)',
+    category:'lookup',
+    syntax:'VLOOKUP(lookup_value, table_array, col_index, [range_lookup])',
+    description:'Search first column of a table for a value and return value from the same row in a specified column. This demo simulates exact match only.',
+    example:{
+      formulaText:'=VLOOKUP("Bob", A1:B4, 2, FALSE)',
+      exDesc:'Find "Bob" in first column and return the corresponding value in column 2',
+      inputs:'Bob,Ann,Bob;10,20,30' // table: colA: Bob,Ann,Bob ; colB: 10,20,30
+    },
+    simulate: (inputs, cellRef) => {
+      const lookup = cellRef || '';
+      const colA = inputs[0]||[];
+      const colB = inputs[1]||[];
+      let steps=[`Lookup value = ${lookup}`];
+      for(let i=0;i<colA.length;i++){
+        steps.push(`Row ${i+1}: ${colA[i]} | ${colB[i]}`);
+        if(String(colA[i])===String(lookup)) {
+          steps.push(`Match found at row ${i+1}, returning ${colB[i]}`);
+          return { result: colB[i], steps };
+        }
+      }
+      steps.push('No exact match found -> #N/A (simulated)');
+      return { result: '#N/A', steps };
+    }
+  },
+
+  {
+    id:'xlookup',
+    name:'XLOOKUP (basic)',
+    category:'lookup',
+    syntax:'XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found])',
+    description:'Search a lookup array and return corresponding value from a return array. Simulated exact match.',
+    example:{
+      formulaText:'=XLOOKUP("Blue", A1:A4, B1:B4, "Not found")',
+      exDesc:'Find "Blue" in the colors column and return matching value from the second column',
+      inputs:'Red,Blue,Green;100,200,300'
+    },
+    simulate: (inputs, cellRef) => {
+      const lookup = cellRef||'';
+      const look = inputs[0]||[];
+      const ret = inputs[1]||[];
+      let steps=[`Lookup ${lookup}`];
+      for(let i=0;i<look.length;i++){
+        steps.push(`Checking ${look[i]} -> ${look[i]===lookup ? 'match' : 'no'}`);
+        if(String(look[i])===String(lookup)) return { result: ret[i], steps };
+      }
+      steps.push('No match found; returning not found value (simulated)');
+      return { result: '#N/A', steps };
+    }
+  },
+
+  {
+    id:'indexmatch',
+    name:'INDEX + MATCH',
+    category:'lookup',
+    syntax:'INDEX(return_range, MATCH(lookup_value, lookup_range, 0))',
+    description:'More powerful than VLOOKUP — MATCH finds the row, INDEX returns from any column.',
+    example:{
+      formulaText:'=INDEX(B1:B5, MATCH("Sam", A1:A5, 0))',
+      exDesc:'Find "Sam" in A column and return corresponding B value',
+      inputs:'Sam,Jill,Sam;5,7,9'
+    },
+    simulate: (inputs, cellRef) => {
+      const lookup = cellRef||'';
+      const look = inputs[0]||[];
+      const ret = inputs[1]||[];
+      let steps=['Perform MATCH to find row index'];
+      for(let i=0;i<look.length;i++){
+        steps.push(`Row ${i+1}: ${look[i]}`);
+        if(String(look[i])===String(lookup)) {
+          steps.push(`MATCH -> row ${i+1}`);
+          steps.push(`INDEX returns ${ret[i]}`);
+          return { result: ret[i], steps };
+        }
+      }
+      steps.push('No match -> #N/A');
+      return { result: '#N/A', steps };
+    }
+  },
+
+  {
+    id:'concat',
+    name:'CONCAT / TEXTJOIN',
+    category:'text',
+    syntax:'CONCAT(text1, [text2], ...), TEXTJOIN(delimiter, ignore_empty, text1, ...)',
+    description:'Join text pieces into one string.',
+    example:{
+      formulaText:'=TEXTJOIN(" ", TRUE, "Hello","World")',
+      exDesc:'Returns "Hello World"',
+      inputs:'Hello,World'
+    },
+    simulate: (inputs) => {
+      const arr = inputs.flat();
+      const res = arr.join(' ');
+      const steps = [`Parts: ${arr.join(', ')}`, `Joined with space => "${res}"`];
+      return { result: res, steps };
+    }
+  },
+
+  {
+    id:'leftmidright',
+    name:'LEFT / MID / RIGHT',
+    category:'text',
+    syntax:'LEFT(text, n), MID(text, start, n), RIGHT(text, n)',
+    description:'Extract parts of text from left, middle, or right.',
+    example:{
+      formulaText:'=LEFT("Spreadsheet", 5)',
+      exDesc:'Returns "Sprea"',
+      inputs:'Spreadsheet'
+    },
+    simulate: (inputs, cellRef) => {
+      const text = (inputs.flat()[0]||'').toString();
+      const which = cellRef || 'LEFT';
+      if(which.toUpperCase() === 'LEFT') {
+        const n = 5;
+        return { result: text.slice(0,n), steps: [`Text: "${text}"`, `LEFT ${n} => "${text.slice(0,n)}"`] };
+      } else if(which.toUpperCase()==='RIGHT') {
+        const n = 4;
+        return { result: text.slice(-n), steps: [`Text: "${text}"`, `RIGHT ${n} => "${text.slice(-n)}"`] };
+      } else {
+        const start = 3, n=4;
+        return { result: text.substr(start-1,n), steps: [`Text: "${text}"`, `MID start ${start} n ${n} => "${text.substr(start-1,n)}"`] };
+      }
+    }
+  },
+
+  // Add more formulas here...
+];
+
+/* Utility: populate list */
+const listEl = document.getElementById('list');
+const searchEl = document.getElementById('search');
+const catEl = document.getElementById('category');
+const resetBtn = document.getElementById('reset');
+
+function renderList(filterText='', filterCat='all') {
+  listEl.innerHTML = '';
+  const f = filterText.trim().toLowerCase();
+  const items = formulas.filter(x=>{
+    if(filterCat!=='all' && x.category !== filterCat) return false;
+    if(!f) return true;
+    return (x.name+x.description+x.syntax).toLowerCase().includes(f);
+  });
+  items.forEach(x=>{
+    const div = document.createElement('div');
+    div.className='formula-item';
+    div.innerHTML = `<strong>${x.name}</strong><div class="meta">${x.syntax}</div>`;
+    div.onclick = ()=>selectFormula(x.id, div);
+    listEl.appendChild(div);
+  });
+}
+renderList();
+
+/* Selection */
+let activeDiv = null;
+function selectFormula(id, clickedDiv) {
+  if(activeDiv) activeDiv.classList.remove('active');
+  clickedDiv.classList.add('active');
+  activeDiv = clickedDiv;
+  const f = formulas.find(ff=>ff.id===id);
+  showDetails(f);
+}
+
+/* Show details */
+const titleEl = document.getElementById('title');
+const synEl = document.getElementById('syn');
+const descEl = document.getElementById('description');
+const exBox = document.getElementById('example');
+const exFormula = document.getElementById('ex-formula');
+const exResult = document.getElementById('ex-result');
+const exDescEl = document.getElementById('ex-desc');
+const simDiv = document.getElementById('sim');
+const inputsEl = document.getElementById('inputs');
+const runBtn = document.getElementById('run');
+const simResult = document.getElementById('sim-result');
+const stepsEl = document.getElementById('steps');
+const howDiv = document.getElementById('how');
+const copyBtn = document.getElementById('copyFormula');
+const cellRefEl = document.getElementById('cellRef');
+const notesEl = document.getElementById('notes');
+
+let currentFormula = null;
+
+function showDetails(f) {
+  currentFormula = f;
+  titleEl.textContent = f.name;
+  synEl.textContent = f.syntax;
+  descEl.textContent = f.description;
+  notesEl.textContent = 'Tip: the simulator is a simple demo and does not implement full Excel edge cases (e.g. array formulas, volatile functions, exact Excel error types). Use results for learning and copy formula text into Excel for real work.';
+  if(f.example) {
+    exBox.style.display='block';
+    exFormula.textContent = f.example.formulaText;
+    exDescEl.textContent = f.example.exDesc || '';
+    exResult.textContent = '';
+    // Show example's result using the simulate function if possible
+    try {
+      const parsedInputs = parseInputsString(f.example.inputs||'');
+      const sim = f.simulate(parsedInputs, '');
+      exResult.textContent = `Example result (simulated) → ${sim.result}`;
+    } catch(e) {
+      exResult.textContent = '';
+    }
+  } else exBox.style.display='none';
+
+  simDiv.style.display='block';
+  howDiv.style.display='block';
+  simResult.style.display='none';
+  stepsEl.innerHTML='';
+  // fill inputs default for convenience
+  inputsEl.value = formatInputsForTextarea(f.example && f.example.inputs ? f.example.inputs : '');
+  cellRefEl.value = '';
+}
+
+/* Helpers to parse and format inputs:
+   - The UI accepts:
+     * single list: "10,20,30"
+     * two lists: "A,B,C;1,2,3" meaning two arrays
+     * multi-lines also allowed; each line treated as a list
+*/
+function parseInputsString(s) {
+  s = s || '';
+  if(typeof s !== 'string') return s;
+  // split lines and semicolons
+  const raw = s.split(/\n|;/).map(r=>r.trim()).filter(r=>r.length>0);
+  const parsed = raw.map(r=>{
+    // split by comma
+    return r.split(',').map(v=>v.trim()).filter(t=>t.length>0).map(val=>{
+      // try number
+      const n = Number(val);
+      return isNaN(n) ? val : n;
+    });
+  });
+  return parsed;
+}
+function formatInputsForTextarea(v) {
+  if(!v) return '';
+  if(typeof v === 'string') return v;
+  if(Array.isArray(v)) {
+    return v.map(arr => Array.isArray(arr) ? arr.join(',') : String(arr)).join(';\n');
+  }
+  return String(v);
+}
+
+/* Run simulation */
+runBtn.onclick = ()=>{
+  if(!currentFormula) return alert('Pick a formula first.');
+  const parsed = parseInputsString(inputsEl.value);
+  const cellRef = (cellRefEl.value || '').trim();
+  let out;
+  try {
+    out = currentFormula.simulate(parsed, cellRef);
+  } catch(e) {
+    out = { result: '#ERR', steps: ['Simulation error: ' + e.message] };
+  }
+  simResult.style.display='block';
+  simResult.innerHTML = `<strong>Result:</strong> <div style="margin-top:6px">${out.result}</div>`;
+  stepsEl.innerHTML = '';
+  out.steps.forEach(s=>{
+    const p = document.createElement('div');
+    p.textContent = '• ' + s;
+    p.style.marginTop='6px';
+    stepsEl.appendChild(p);
+  });
+};
+
+/* Copy formula to clipboard */
+copyBtn.onclick = async ()=>{
+  if(!currentFormula || !currentFormula.example) return;
+  try {
+    await navigator.clipboard.writeText(currentFormula.example.formulaText);
+    copyBtn.textContent = 'Copied!';
+    setTimeout(()=>copyBtn.textContent = 'Copy Excel formula', 1400);
+  } catch(e){ alert('Copy failed: ' + e.message); }
+};
+
+/* Search and filter */
+searchEl.addEventListener('input', ()=>renderList(searchEl.value, catEl.value));
+catEl.addEventListener('change', ()=>renderList(searchEl.value, catEl.value));
+resetBtn.addEventListener('click', ()=>{
+  searchEl.value=''; catEl.value='all'; renderList();
+  if(activeDiv) { activeDiv.classList.remove('active'); activeDiv=null; }
+  titleEl.textContent='Select a formula'; synEl.textContent=''; descEl.textContent='';
+  exBox.style.display='none'; simDiv.style.display='none'; howDiv.style.display='none';
+});
+
+/* Keyboard: Enter on search selects first match */
+searchEl.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') {
+    const first = listEl.querySelector('.formula-item');
+    if(first) first.click();
+  }
+});
+
+/* initial focus */
+searchEl.focus();
+
+</script>
+</body>
+</html>
